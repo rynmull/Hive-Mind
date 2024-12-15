@@ -18,15 +18,9 @@
         <section id="status" class="card">
             <h2>Status</h2>
             <p id="current-token">Current Token: None</p>
-            <p id="profit-loss">Profit/Loss: 0.00 SOL</p>
-            <p id="total-profit">Total Profit: 0.00 SOL</p>
+            <p id="token-buys">Buys: 0</p>
+            <p id="token-price">Price: 0.00 SOL</p>
             <p id="wallet-balance">Wallet Balance: 0.00 SOL</p>
-        </section>
-
-        <!-- Graph Section -->
-        <section id="graph" class="card">
-            <h2>Profit/Loss Over Time</h2>
-            <canvas id="profitChart" width="400" height="200"></canvas>
         </section>
 
         <!-- Controls Section -->
@@ -42,23 +36,14 @@
 
         <!-- Settings Section -->
         <section id="settings" class="card">
-            <h2>Adaptive Parameters</h2>
+            <h2>Settings</h2>
             <label for="threshold-input">Trending Threshold:</label>
             <input type="number" id="threshold-input" value="5">
-
             <label for="profit-take-input">Profit Take Percentage:</label>
-            <input type="number" id="profit-take-input" value="20" step="0.1">
-
+            <input type="number" id="profit-take-input" value="20">
             <label for="loss-cut-input">Loss Cut Percentage:</label>
-            <input type="number" id="loss-cut-input" value="10" step="0.1">
-
+            <input type="number" id="loss-cut-input" value="10">
             <button id="save-settings">Save Settings</button>
-        </section>
-
-        <!-- Recent Trades Section -->
-        <section id="recent-trades" class="card">
-            <h2>Recent Trades</h2>
-            <ul id="trades-list"></ul>
         </section>
     </main>
     <footer>

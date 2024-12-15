@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import websockets
@@ -6,22 +5,33 @@ import requests
 import os
 from flask import Flask, send_from_directory, jsonify, request
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
+from solana.transaction import Transaction, TransactionInstruction
+from solana.rpc.api import Client
+from solana.publickey import PublicKey
+from solana.keypair import Keypair
+
+# Initialize Flask app
+app = Flask(__name__)
 
 # Access environment variables
 private_key = os.getenv("PRIVATE_KEY")
 rpc_endpoint = os.getenv("RPC_ENDPOINT")
 
+# Initialize Solana client
+solana_client = Client(rpc_endpoint)
+
+# Phantom wallet public key
+wallet_public_key = PublicKey("1342etfFbEfBK12i6MuDYgVBhpacjLwNkoSaz9wPnC1W")
+
 # Constants for WebSocket and API
 PUMP_WS_URL = "wss://pumpportal.fun/api/data"
-TRADE_API_URL = "https://pumpportal.fun/api/trade-local"
 
-# Adaptive parameters (initial values)
+# Adaptive parameters
 adaptive_parameters = {
-    "trending_threshold": 5,  # Buys in 30 seconds
+    "trending_threshold": 5,
     "profit_take_percentage": 20,
-    "loss_cut_percentage": 10,
-    "time_window": 30  # Seconds
+    "loss_cut_percentage": 10
 }
 
 # Persistent state
@@ -30,98 +40,126 @@ state = {
     "profit": 0,
     "recent_trades": [],
     "current_token": None,
-    "buy_price": None
+    "current_token_buys": 0,
+    "buy_price": None,
+    "wallet_balance": 0
 }
 
-# File for saving state
-STATE_FILE = "trading_state.json"
-
-# Load state from file if it exists
-def load_state():
-    try:
-        with open(STATE_FILE, "r") as file:
-            global state
-            state.update(json.load(file))
-    except FileNotFoundError:
-        pass
-
-# Save state to file
-def save_state():
-    with open(STATE_FILE, "w") as file:
-        json.dump(state, file)
-
 # WebSocket handler
-async def monitor_trending_tokens():
+async def monitor_pump_fun():
     async with websockets.connect(PUMP_WS_URL) as websocket:
-        # Subscribe to updates
-        await websocket.send(json.dumps({"action": "subscribeNewToken"}))
-        await websocket.send(json.dumps({"action": "subscribeTokenTrade"}))
-
-        print("Subscribed to PumpPortal WebSocket.")
+        # Subscribe to token trade events
+        await websocket.send(json.dumps({"method": "subscribeTokenTrade"}))
+        print("Subscribed to Pump.fun WebSocket.")
 
         while True:
             try:
                 message = await websocket.recv()
                 data = json.loads(message)
-                process_message(data)
+                if "method" in data and data["method"] == "tokenTrade":
+                    process_token_trade(data["params"])
             except websockets.ConnectionClosed:
                 print("WebSocket connection closed. Reconnecting...")
                 await asyncio.sleep(5)
-                await monitor_trending_tokens()
+                await monitor_pump_fun()
 
-# Process incoming WebSocket messages
-def process_message(data):
-    if "newToken" in data:
-        print("New Token Detected:", data["newToken"])
-    elif "tokenTrade" in data:
-        analyze_trade(data["tokenTrade"])
+# Process token trade messages
+def process_token_trade(trade_data):
+    token = trade_data.get("mint", None)
+    buys = trade_data.get("buys", 0)
+    price = float(trade_data.get("price", 0))
 
-# Analyze trades to detect trends
-def analyze_trade(trade):
-    token = trade["mint"]
-    buys = trade["buys"]
-    price = float(trade["price"])
+    if token:
+        state["current_token"] = token
+        state["current_token_buys"] = buys
+        state["buy_price"] = price
+        print(f"Current Token: {token}, Buys: {buys}, Price: {price}")
 
-    if buys >= state["parameters"]["trending_threshold"]:
-        print(f"Trending token detected: {token} with {buys} buys.")
-        if not state["current_token"]:
+        # Trigger a trade if conditions are met
+        if buys >= state["parameters"]["trending_threshold"] and not state["current_token"]:
             execute_trade("buy", token, price)
 
-# Execute trade actions
+# Trade execution function
 def execute_trade(action, token, price):
-    if action == "buy":
-        state["current_token"] = token
-        state["buy_price"] = price
-        state["recent_trades"].append({"action": "buy", "token": token, "price": price, "time": str(datetime.now())})
-        print(f"Bought {token} at {price} SOL.")
-    elif action == "sell":
-        profit = (price - state["buy_price"]) * 0.1  # Assuming 0.1 SOL quantity
-        state["profit"] += profit
-        state["recent_trades"].append({"action": "sell", "token": token, "price": price, "profit": profit, "time": str(datetime.now())})
-        state["current_token"] = None
-        state["buy_price"] = None
-        print(f"Sold {token} at {price} SOL. Profit: {profit} SOL.")
+    try:
+        # Extract the keypair from the private key
+        private_key_bytes = bytes.fromhex(private_key)
+        keypair = Keypair.from_secret_key(private_key_bytes)
 
-    save_state()
+        if action == "buy":
+            # Create a dummy transaction for buying
+            instruction = TransactionInstruction(
+                keys=[],
+                program_id=PublicKey(token),  # Replace with actual program ID for the token
+                data=b"Buy"  # Program-specific data
+            )
+            txn = Transaction().add(instruction)
 
-# Check trading conditions and execute sell if conditions met
-def check_trading_conditions():
-    if state["current_token"] and state["buy_price"]:
-        current_price = get_current_price(state["current_token"])
+            # Sign and send the transaction
+            txn_signature = solana_client.send_transaction(txn, keypair)
+            print(f"Transaction signature: {txn_signature}")
 
-        if current_price >= state["buy_price"] * (1 + state["parameters"]["profit_take_percentage"] / 100):
-            execute_trade("sell", state["current_token"], current_price)
-        elif current_price <= state["buy_price"] * (1 - state["parameters"]["loss_cut_percentage"] / 100):
-            execute_trade("sell", state["current_token"], current_price)
+            # Update state
+            state["current_token"] = token
+            state["buy_price"] = price
+            state["recent_trades"].append({"action": "buy", "token": token, "price": price, "time": str(datetime.now())})
+            print(f"Bought {token} at {price} SOL.")
 
-# Fetch current price of a token
-def get_current_price(token):
-    # Placeholder for API call or WebSocket message processing
-    return state["buy_price"] * 1.2  # Mock price movement
+        elif action == "sell":
+            # Create a dummy transaction for selling
+            instruction = TransactionInstruction(
+                keys=[],
+                program_id=PublicKey(token),  # Replace with actual program ID for the token
+                data=b"Sell"  # Program-specific data
+            )
+            txn = Transaction().add(instruction)
 
-# Flask Web Server
-app = Flask(__name__)
+            # Sign and send the transaction
+            txn_signature = solana_client.send_transaction(txn, keypair)
+            print(f"Transaction signature: {txn_signature}")
 
+            # Update state
+            profit = (price - state["buy_price"]) * 0.1  # Assuming 0.1 SOL quantity
+            state["profit"] += profit
+            state["recent_trades"].append({"action": "sell", "token": token, "price": price, "profit": profit, "time": str(datetime.now())})
+            state["current_token"] = None
+            state["buy_price"] = None
+            print(f"Sold {token} at {price} SOL. Profit: {profit} SOL.")
+
+    except Exception as e:
+        print(f"Error executing trade: {e}")
+
+# Fetch wallet balance from RPC endpoint
+def fetch_wallet_balance():
+    try:
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getBalance",
+            "params": ["1342etfFbEfBK12i6MuDYgVBhpacjLwNkoSaz9wPnC1W"]  # Replace with your wallet public key
+        }
+        response = requests.post(rpc_endpoint, headers=headers, json=payload)
+
+        response_data = response.json()
+        balance = response_data.get("result", {}).get("value", 0) / 10**9  # Convert lamports to SOL
+        state["wallet_balance"] = balance
+        print(f"Fetched wallet balance: {balance} SOL")
+    except Exception as e:
+        print(f"Error fetching wallet balance: {e}")
+        state["wallet_balance"] = 0
+
+@app.route("/api/get-slot", methods=["GET"])  # New route to fetch the current Solana slot
+def get_slot():
+    try:
+        current_slot = solana_client.get_slot()
+        print(f"Current Slot: {current_slot['result']}")
+        return jsonify({"slot": current_slot["result"]})
+    except Exception as e:
+        print(f"Error fetching slot: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# Flask routes
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
@@ -130,53 +168,25 @@ def index():
 def static_files(path):
     return send_from_directory(".", path)
 
-@app.route("/api/start-trading", methods=["POST"])
-def start_trading():
-    body = request.get_json()
-    trade_amount = body.get("amount", 0.1)  # Default to 0.1 SOL
-
-    print(f"Start trading request received. Trade amount: {trade_amount}")  # Debug log
-
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    fetch_wallet_balance()  # Update wallet balance before returning status
     return jsonify({
-        "success": True,
-        "token": state.get("current_token", "None"),
-        "profit": float(state.get("profit", 0)),
-        "totalProfit": float(state.get("profit", 0)),
-        "recentTrades": state["recent_trades"]
-    })
-
-
-@app.route("/api/stop-trading", methods=["POST"])
-def stop_trading():
-    return jsonify({
-        "success": True,
-        "message": "Trading stopped successfully",
-        "recentTrades": state["recent_trades"]
+        "current_token": state["current_token"],
+        "wallet_balance": state["wallet_balance"],
+        "current_token_buys": state["current_token_buys"],
+        "buy_price": state["buy_price"],
+        "profit": state["profit"],
+        "recent_trades": state["recent_trades"]
     })
 
 @app.route("/api/update-parameters", methods=["POST"])
 def update_parameters():
     body = request.get_json()
-    state["parameters"]["trending_threshold"] = body.get("trending_threshold", state["parameters"]["trending_threshold"])
-    state["parameters"]["profit_take_percentage"] = body.get("profit_take_percentage", state["parameters"]["profit_take_percentage"])
-    state["parameters"]["loss_cut_percentage"] = body.get("loss_cut_percentage", state["parameters"]["loss_cut_percentage"])
-    save_state()
+    state["parameters"].update(body)
     return jsonify({"success": True, "parameters": state["parameters"]})
 
-@app.route("/api/get-balance", methods=["GET"])
-def get_balance():
-    # Replace with actual RPC call
-    balance = 10  # Mocked balance
-    return jsonify({"balance": balance})
-
-# Start the trading bot in a separate thread
-def start_trading_bot():
-    asyncio.run(main())
-
+# Main execution
 if __name__ == "__main__":
-    # Start the bot in a new thread
-    bot_thread = threading.Thread(target=start_trading_bot, daemon=True)
-    bot_thread.start()
-
-    # Run the Flask web server
+    threading.Thread(target=lambda: asyncio.run(monitor_pump_fun()), daemon=True).start()
     app.run(host="0.0.0.0", port=8080)
