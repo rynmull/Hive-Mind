@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hive Mind - Solana Trading Bot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Hive Mind - Solana Trading Bot</h1>
+            <button id="toggle-theme" class="theme-toggle">Dark Mode</button>
+        </div>
+    </header>
+    <main>
+        <!-- Status Section -->
+        <section id="status" class="card">
+            <h2>Status</h2>
+            <p id="current-token">Current Token: None</p>
+            <p id="profit-loss">Profit/Loss: 0.00 SOL</p>
+            <p id="total-profit">Total Profit: 0.00 SOL</p>
+            <p id="wallet-balance">Wallet Balance: 0.00 SOL</p>
+        </section>
+
+        <!-- Graph Section -->
+        <section id="graph" class="card">
+            <h2>Profit/Loss Over Time</h2>
+            <canvas id="profitChart" width="400" height="200"></canvas>
+        </section>
+
+        <!-- Controls Section -->
+        <section id="controls" class="card">
+            <h2>Controls</h2>
+            <label for="trade-amount">Trade Amount (SOL):</label>
+            <input type="number" id="trade-amount" value="0.1" step="0.01">
+            <div class="button-group">
+                <button id="start-trading">Start Trading</button>
+                <button id="stop-trading">Stop Trading</button>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings" class="card">
+            <h2>Adaptive Parameters</h2>
+            <label for="threshold-input">Trending Threshold:</label>
+            <input type="number" id="threshold-input" value="5">
+
+            <label for="profit-take-input">Profit Take Percentage:</label>
+            <input type="number" id="profit-take-input" value="20" step="0.1">
+
+            <label for="loss-cut-input">Loss Cut Percentage:</label>
+            <input type="number" id="loss-cut-input" value="10" step="0.1">
+
+            <button id="save-settings">Save Settings</button>
+        </section>
+
+        <!-- Recent Trades Section -->
+        <section id="recent-trades" class="card">
+            <h2>Recent Trades</h2>
+            <ul id="trades-list"></ul>
+        </section>
+    </main>
+    <footer>
+        <p>Powered by Hive Mind</p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
